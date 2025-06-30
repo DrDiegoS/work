@@ -1,0 +1,195 @@
+import pandas as pd
+import matplotlib.pyplot as plt
+
+# Caminho do arquivo CSV filtrado
+caminho_arquivo_filtrado = "cronicofiltrado.csv"
+
+# Leitura do arquivo
+# (certifique-se de que o arquivo existe antes de rodar este script)
+df_filtrado = pd.read_csv(caminho_arquivo_filtrado, low_memory=False)
+
+# Filtra pacientes com custo total >= 60 mil
+pacientes_60k = df_filtrado[df_filtrado['Custo Total'] >= 60000]
+quantidade_60k = pacientes_60k.shape[0]
+
+print(
+    "Quantidade de pacientes com gasto igual ou maior a 60 mil: "
+    f"{quantidade_60k}"
+)
+
+# Salva esses pacientes em um novo arquivo
+pacientes_60k.to_csv("pcte_maior_60k.csv", index=False)
+print("Arquivo 'pcte_maior_60k.csv' gerado com sucesso.")
+
+# Exibe as primeiras linhas do DataFrame filtrado (10 primeiras linhas)
+print(pacientes_60k.head(10))
+
+# Exibe as colunas do DataFrame filtrado 60k
+print("\nColunas do DataFrame pacientes_60k:")
+print(list(pacientes_60k.columns))
+
+# Análise de Pareto: identificar os pacientes responsáveis pela maior parte do custo
+# Ordena os pacientes pelo custo total em ordem decrescente
+pacientes_60k_sorted = pacientes_60k.sort_values(
+    by='Custo Total', ascending=False
+)
+
+# Calcula o custo acumulado e a porcentagem acumulada
+pacientes_60k_sorted['Custo Acumulado'] = (
+    pacientes_60k_sorted['Custo Total'].cumsum()
+)
+custo_total = pacientes_60k_sorted['Custo Total'].sum()
+pacientes_60k_sorted['% Acumulado'] = (
+    100 * pacientes_60k_sorted['Custo Acumulado'] / custo_total
+)
+
+# Exibe as primeiras linhas da análise de Pareto
+print("\nAnálise de Pareto dos pacientes com custo >= 60k:")
+print(
+    pacientes_60k_sorted[[
+        'Custo Total', 'Custo Acumulado', '% Acumulado'
+    ]].head(10)
+)
+
+# Salva o resultado da análise de Pareto
+pacientes_60k_sorted.to_csv("pareto_pacientes_60k.csv", index=False)
+print("Arquivo 'pareto_pacientes_60k.csv' gerado com sucesso.")
+
+# Cria os clusters de acordo com a análise de Pareto
+grupo_80 = pacientes_60k_sorted[pacientes_60k_sorted['% Acumulado'] <= 80]
+grupo_20 = pacientes_60k_sorted[pacientes_60k_sorted['% Acumulado'] > 80]
+
+# Salva os clusters em arquivos Excel separados
+grupo_80.to_excel("grupo_80_pacientes_60k.xlsx", index=False)
+grupo_20.to_excel("grupo_20_pacientes_60k.xlsx", index=False)
+print(
+    "Arquivos 'grupo_80_pacientes_60k.xlsx' e "
+    "'grupo_20_pacientes_60k.xlsx' gerados com sucesso."
+)
+
+# Estatísticas descritivas dos custos dos pacientes >= 60k
+print("\nEstatísticas descritivas dos custos dos pacientes >= 60k:")
+print(pacientes_60k['Custo Total'].describe())
+
+# Top 10 pacientes com maior custo
+print("\nTop 10 pacientes com maior custo:")
+print(pacientes_60k_sorted[['nome_beneficiario', 'Custo Total']].head(10))
+
+# Distribuição dos custos em faixas (bins)
+bins = [60000, 80000, 100000, 150000, 200000, pacientes_60k['Custo Total'].max()]
+labels = ['60k-80k', '80k-100k', '100k-150k', '150k-200k', '200k+']
+pacientes_60k['Faixa de Custo'] = pd.cut(
+    pacientes_60k['Custo Total'], bins=bins, labels=labels, include_lowest=True
+)
+print("\nDistribuição dos pacientes por faixa de custo:")
+print(pacientes_60k['Faixa de Custo'].value_counts())
+
+# Distribuição por faixa etária
+if 'idade' in pacientes_60k.columns:
+    print("\nEstatísticas de custo por faixa etária:")
+    idade_bins = [0, 30, 45, 60, 75, 100]
+    idade_labels = ['<30', '30-45', '45-60', '60-75', '75+']
+    pacientes_60k['Faixa Etária'] = pd.cut(
+        pacientes_60k['idade'],
+        bins=idade_bins,
+        labels=idade_labels,
+        include_lowest=True
+    )
+    print(pacientes_60k.groupby('Faixa Etária')['Custo Total'].describe())
+
+# Distribuição por UF
+if 'uf_beneficiario' in pacientes_60k.columns:
+    print("\nDistribuição por UF:")
+    print(pacientes_60k['uf_beneficiario'].value_counts())
+
+# Distribuição por gênero
+if 'genero' in pacientes_60k.columns:
+    print("\nDistribuição por gênero:")
+    print(pacientes_60k['genero'].value_counts())
+
+# Distribuição por tipo de plano
+if 'tipo_plano' in pacientes_60k.columns:
+    print("\nDistribuição por tipo de plano:")
+    print(pacientes_60k['tipo_plano'].value_counts())
+
+# Distribuição por situação ativa/inativa
+if 'situacao_ativo_ou_inativo_plano' in pacientes_60k.columns:
+    print("\nDistribuição por situação ativa/inativa:")
+    print(pacientes_60k['situacao_ativo_ou_inativo_plano'].value_counts())
+
+# Gera um relatório em Excel com múltiplas abas e gráficos
+with pd.ExcelWriter(
+    "relatorio_pacientes_maior_60k.xlsx", engine="xlsxwriter"
+) as writer:
+    pacientes_60k.to_excel(
+        writer, sheet_name="Pacientes >= 60k", index=False
+    )
+    pacientes_60k_sorted.to_excel(
+        writer, sheet_name="Pareto", index=False
+    )
+    stats = pacientes_60k['Custo Total'].describe().to_frame()
+    stats.to_excel(writer, sheet_name="Estatísticas")
+    dist_faixa = (
+        pacientes_60k['Faixa de Custo']
+        .value_counts()
+        .sort_index()
+        .to_frame('Quantidade')
+    )
+    dist_faixa.to_excel(writer, sheet_name="Distribuição Faixa Custo")
+    if 'Faixa Etária' in pacientes_60k.columns:
+        stats_idade = (
+            pacientes_60k.groupby('Faixa Etária')['Custo Total'].describe()
+        )
+        stats_idade.to_excel(writer, sheet_name="Estatísticas Faixa Etária")
+    # Gráfico Pareto
+    fig, ax1 = plt.subplots(figsize=(8, 5))
+    ax1.bar(
+        pacientes_60k_sorted.index,
+        pacientes_60k_sorted['Custo Total'],
+        color='C0'
+    )
+    ax2 = ax1.twinx()
+    ax2.plot(
+        pacientes_60k_sorted.index,
+        pacientes_60k_sorted['% Acumulado'],
+        color='C1',
+        marker='o'
+    )
+    ax1.set_ylabel('Custo Total')
+    ax2.set_ylabel('% Acumulado')
+    ax1.set_title('Análise de Pareto dos Pacientes >= 60k')
+    plt.tight_layout()
+    fig.savefig("grafico_pareto.png")
+    plt.close(fig)
+    # Gráfico distribuição por faixa de custo
+    fig2, ax = plt.subplots(figsize=(6, 4))
+    dist_faixa.plot(kind='bar', legend=False, ax=ax)
+    ax.set_ylabel('Quantidade de Pacientes')
+    ax.set_title('Distribuição por Faixa de Custo')
+    plt.tight_layout()
+    fig2.savefig("grafico_faixa_custo.png")
+    plt.close(fig2)
+    # Insere gráficos no Excel
+    workbook = writer.book
+    worksheet = writer.sheets['Pareto']
+    worksheet.insert_image('K2', 'grafico_pareto.png')
+    worksheet2 = writer.sheets['Distribuição Faixa Custo']
+    worksheet2.insert_image('E2', 'grafico_faixa_custo.png')
+print(
+    "Relatório gerencial 'relatorio_pacientes_maior_60k.xlsx' gerado com sucesso."
+)
+
+# Verificação das colunas utilizadas no relatório
+colunas_necessarias = [
+    'Custo Total', 'Faixa de Custo', 'idade', 'Faixa Etária'
+]
+print("\nVerificando se as colunas necessárias existem no DataFrame pacientes_60k:")
+for coluna in colunas_necessarias:
+    if coluna in pacientes_60k.columns:
+        print(f"Coluna '{coluna}' encontrada.")
+    else:
+        print(f"Coluna '{coluna}' NÃO encontrada!")
+
+
+
+
